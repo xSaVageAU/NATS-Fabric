@@ -3,13 +3,13 @@
 	"id": "nats-fabric",
 	"version": "${version}",
 	"name": "NATS-Fabric",
-	"description": "This is an example description! Tell everyone what your mod is about!",
+	"description": "NATS integration for Fabric Minecraft 26.1.1",
 	"authors": [
-		"Me!"
+		"xSaVageAU"
 	],
 	"contact": {
-		"homepage": "https://fabricmc.net/",
-		"sources": "https://github.com/FabricMC/fabric-example-mod"
+		"homepage": "https://github.com/xSaVageAU/NATS-Fabric",
+		"sources": "https://github.com/xSaVageAU/NATS-Fabric"
 	},
 	"license": "CC0-1.0",
 	"icon": "assets/nats-fabric/icon.png",
