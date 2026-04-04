@@ -11,7 +11,7 @@
 		"homepage": "https://github.com/xSaVageAU/NATS-Fabric",
 		"sources": "https://github.com/xSaVageAU/NATS-Fabric"
 	},
-	"license": "CC0-1.0",
+	"license": "MIT",
 	"icon": "assets/nats-fabric/icon.png",
 	"environment": "*",
 	"entrypoints": {
