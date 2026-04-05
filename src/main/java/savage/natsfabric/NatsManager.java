@@ -1,13 +1,13 @@
 package savage.natsfabric;
 
 import io.nats.client.*;
+import io.nats.client.api.KeyValueConfiguration;
 import savage.natsfabric.config.NatsConfig;
 
 import java.time.Duration;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
 
 /**
  * Core NATS Manager for Fabric.
@@ -43,39 +43,37 @@ public class NatsManager {
      * Attempts to connect to the NATS server asynchronously.
      */
     public void connect() {
-        natsExecutor.execute(() -> {
+        try {
+            NATSFabric.LOGGER.info("[NATS] Connecting to {} (ident: {})", config.natsUrl, config.serverName);
+
+            Options options = new Options.Builder()
+                    .server(config.natsUrl)
+                    .connectionName("FabricLibrary-" + config.serverName)
+                    .maxReconnects(-1)
+                    .reconnectWait(Duration.ofSeconds(2))
+                    .connectionListener((conn, type) ->
+                            NATSFabric.LOGGER.info("[NATS] Connection event: {}", type))
+                    .errorListener(new ErrorListener() {
+                        @Override
+                        public void errorOccurred(Connection conn, String error) {
+                            NATSFabric.LOGGER.error("[NATS] Error: {}", error);
+                        }
+                    })
+                    .build();
+
+            natsConnection = Nats.connect(options);
+            
             try {
-                NATSFabric.LOGGER.info("[NATS] Connecting to {} (ident: {})", config.natsUrl, config.serverName);
-
-                Options options = new Options.Builder()
-                        .server(config.natsUrl)
-                        .connectionName("FabricLibrary-" + config.serverName)
-                        .maxReconnects(-1)
-                        .reconnectWait(Duration.ofSeconds(2))
-                        .connectionListener((conn, type) ->
-                                NATSFabric.LOGGER.info("[NATS] Connection event: {}", type))
-                        .errorListener(new ErrorListener() {
-                            @Override
-                            public void errorOccurred(Connection conn, String error) {
-                                NATSFabric.LOGGER.error("[NATS] Error: {}", error);
-                            }
-                        })
-                        .build();
-
-                natsConnection = Nats.connect(options);
-                
-                try {
-                    jetStream = natsConnection.jetStream();
-                    NATSFabric.LOGGER.info("[NATS] JetStream initialized");
-                } catch (Exception e) {
-                    NATSFabric.LOGGER.warn("[NATS] JetStream unavailable: {}", e.getMessage());
-                }
-
-                NATSFabric.LOGGER.info("[NATS] Core connection established");
+                jetStream = natsConnection.jetStream();
+                NATSFabric.LOGGER.info("[NATS] JetStream initialized");
             } catch (Exception e) {
-                NATSFabric.LOGGER.error("[NATS] Critical failure during connection", e);
+                NATSFabric.LOGGER.warn("[NATS] JetStream unavailable: {}", e.getMessage());
             }
-        });
+
+            NATSFabric.LOGGER.info("[NATS] Core connection established");
+        } catch (Exception e) {
+            NATSFabric.LOGGER.error("[NATS] Critical failure during connection", e);
+        }
     }
 
     /**
@@ -126,14 +124,23 @@ public class NatsManager {
     }
 
     /**
-     * Helper to get a KeyValue context safely.
+     * Helper to get a KeyValue context safely, creating it if it doesn't exist.
      */
     public KeyValue getKeyValue(String bucket) {
         try {
             if (natsConnection != null) {
-                return natsConnection.keyValue(bucket);
+                try {
+                    return natsConnection.keyValue(bucket);
+                } catch (Exception e) {
+                    // Try to create it
+                    KeyValueManagement kvm = natsConnection.keyValueManagement();
+                    kvm.create(KeyValueConfiguration.builder().name(bucket).build());
+                    return natsConnection.keyValue(bucket);
+                }
             }
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            NATSFabric.LOGGER.error("[NATS] Failed to get/create KV bucket: {}", bucket, e);
+        }
         return null;
     }
 
