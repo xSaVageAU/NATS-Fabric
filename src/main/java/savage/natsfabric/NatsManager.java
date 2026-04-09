@@ -1,7 +1,6 @@
 package savage.natsfabric;
 
 import io.nats.client.*;
-import io.nats.client.api.KeyValueConfiguration;
 import savage.natsfabric.config.NatsConfig;
 
 import java.time.Duration;
@@ -62,7 +61,7 @@ public class NatsManager {
                     .build();
 
             natsConnection = Nats.connect(options);
-            
+
             try {
                 jetStream = natsConnection.jetStream();
                 NATSFabric.LOGGER.info("[NATS] JetStream initialized");
@@ -121,39 +120,6 @@ public class NatsManager {
      */
     public JetStream getJetStream() {
         return jetStream;
-    }
-
-    /**
-     * Helper to get a KeyValue context safely, creating it if it doesn't exist.
-     */
-    public KeyValue getKeyValue(String bucket) {
-        try {
-            if (natsConnection != null) {
-                try {
-                    return natsConnection.keyValue(bucket);
-                } catch (Exception e) {
-                    // Try to create it
-                    KeyValueManagement kvm = natsConnection.keyValueManagement();
-                    kvm.create(KeyValueConfiguration.builder().name(bucket).build());
-                    return natsConnection.keyValue(bucket);
-                }
-            }
-        } catch (Exception e) {
-            NATSFabric.LOGGER.error("[NATS] Failed to get/create KV bucket: {}", bucket, e);
-        }
-        return null;
-    }
-
-    /**
-     * Helper to get an ObjectStore context safely.
-     */
-    public ObjectStore getObjectStore(String bucket) {
-        try {
-            if (natsConnection != null) {
-                return natsConnection.objectStore(bucket);
-            }
-        } catch (Exception ignored) {}
-        return null;
     }
 
     public boolean isConnected() {
