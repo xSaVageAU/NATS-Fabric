@@ -16,16 +16,14 @@ The connection is established when the server starts and cleanly closed after th
 
 ## Setup
 
-Start the server once to generate `config/nats-fabric.json`, then fill in your details:
+Start the server once to generate `config/nats-fabric.yml`, then fill in your details:
 
-```json
-{
-  "serverName": "server-1",
-  "natsUrl": "nats://localhost:4222",
-  "natsAuthToken": "",
-  "natsUsername": "",
-  "natsPassword": ""
-}
+```yaml
+serverName: server-1
+natsUrl: nats://localhost:4222
+natsAuthToken: ""
+natsUsername: ""
+natsPassword: ""
 ```
 
 `serverName` should be a unique identifier for each server in your cluster. If your NATS server requires authentication, provide *either* `natsAuthToken` OR `natsUsername`/`natsPassword`.
