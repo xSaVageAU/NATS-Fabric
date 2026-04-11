@@ -21,6 +21,15 @@ public class NatsConfig {
     /** NATS server URL (e.g. {@code nats://127.0.0.1:4222}). */
     public String natsUrl = "nats://127.0.0.1:4222";
 
+    /** Optional NATS authentication token. */
+    public String natsAuthToken = "";
+
+    /** Optional NATS username (if not using a token). */
+    public String natsUsername = "";
+
+    /** Optional NATS password. */
+    public String natsPassword = "";
+
     /**
      * Unique name for this server instance.
      * Used for identifying the connection and durable consumer session naming.

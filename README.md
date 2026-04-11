@@ -21,11 +21,14 @@ Start the server once to generate `config/nats-fabric.json`, then fill in your d
 ```json
 {
   "serverName": "server-1",
-  "natsUrl": "nats://localhost:4222"
+  "natsUrl": "nats://localhost:4222",
+  "natsAuthToken": "",
+  "natsUsername": "",
+  "natsPassword": ""
 }
 ```
 
-`serverName` should be a unique identifier for each server in your cluster.
+`serverName` should be a unique identifier for each server in your cluster. If your NATS server requires authentication, provide *either* `natsAuthToken` OR `natsUsername`/`natsPassword`.
 
 ## For mod developers
 

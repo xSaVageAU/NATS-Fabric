@@ -45,7 +45,7 @@ public class NatsManager {
         try {
             NATSFabric.LOGGER.info("[NATS] Connecting to {} (ident: {})", config.natsUrl, config.serverName);
 
-            Options options = new Options.Builder()
+            Options.Builder builder = new Options.Builder()
                     .server(config.natsUrl)
                     .connectionName("FabricLibrary-" + config.serverName)
                     .maxReconnects(-1)
@@ -57,8 +57,15 @@ public class NatsManager {
                         public void errorOccurred(Connection conn, String error) {
                             NATSFabric.LOGGER.error("[NATS] Error: {}", error);
                         }
-                    })
-                    .build();
+                    });
+
+            if (config.natsAuthToken != null && !config.natsAuthToken.isEmpty()) {
+                builder.token(config.natsAuthToken.toCharArray());
+            } else if (config.natsUsername != null && !config.natsUsername.isEmpty()) {
+                builder.userInfo(config.natsUsername.toCharArray(), config.natsPassword != null ? config.natsPassword.toCharArray() : new char[0]);
+            }
+
+            Options options = builder.build();
 
             natsConnection = Nats.connect(options);
 
