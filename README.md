@@ -1,22 +1,15 @@
 # NATS-Fabric
 
-A lightweight Fabric library mod that manages a single shared [NATS](https://nats.io) connection for a Minecraft server.
+A simple Fabric library that provides a shared [NATS](https://nats.io) connection for Minecraft servers.
 
 ## What it does
 
-If multiple mods on the same server need to communicate over NATS, each opening their own connection wastes resources and complicates configuration. NATS-Fabric provides a single managed connection instance that any mod can access through a simple API.
-
-The connection is established when the server starts and cleanly closed after the server finishes saving and shutting down.
-
-## Requirements
-
-- Minecraft 26.1+ (Fabric)
-- Java 25+
-- A NATS server with JetStream enabled
+Instead of every mod opening its own NATS connection, they can share one through this library. This keeps resource usage low and simplifies your configuration files.
 
 ## Setup
 
-Start the server once to generate `config/nats-fabric.yml`, then fill in your details:
+1. Start the server once to generate `config/nats-fabric.yml`.
+2. Fill in your NATS server details:
 
 ```yaml
 serverName: server-1
@@ -26,13 +19,13 @@ natsUsername: ""
 natsPassword: ""
 ```
 
-`serverName` should be a unique identifier for each server in your cluster. If your NATS server requires authentication, provide *either* `natsAuthToken` OR `natsUsername`/`natsPassword`.
+`serverName` should be unique for each server in your cluster.
 
-## For mod developers
+## Requirements
 
-Add NATS-Fabric as a dependency and use `NatsManager.getInstance().getConnection()` to access the shared NATS connection.
-
-The connection is available from `SERVER_STARTED` onwards.
+- Minecraft 26.1+ (Fabric)
+- Java 25+
+- A NATS server with JetStream enabled
 
 ## License
 
