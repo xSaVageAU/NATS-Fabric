@@ -1,20 +1,11 @@
 package savage.natsfabric.config;
 
 import net.fabricmc.loader.api.FabricLoader;
-import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.Yaml;
-import org.yaml.snakeyaml.comments.CommentLine;
-import org.yaml.snakeyaml.comments.CommentType;
-import org.yaml.snakeyaml.nodes.MappingNode;
-import org.yaml.snakeyaml.nodes.NodeTuple;
-import org.yaml.snakeyaml.nodes.ScalarNode;
-import org.yaml.snakeyaml.nodes.Tag;
 import savage.natsfabric.NATSFabric;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Minimal configuration for the NATS connection.
