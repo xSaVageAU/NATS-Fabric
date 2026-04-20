@@ -23,11 +23,11 @@ public class NatsManager {
 
     private NatsManager() {
         this.config = NatsConfig.load();
-        this.natsExecutor = Executors.newSingleThreadExecutor(r -> {
-            Thread thread = new Thread(r, "NATS-Worker");
-            thread.setDaemon(true);
-            return thread;
-        });
+        this.natsExecutor = Executors.newVirtualThreadPerTaskExecutor();
+    }
+
+    public ExecutorService getExecutor() {
+        return natsExecutor;
     }
 
     public static NatsManager getInstance() {
