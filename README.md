@@ -2,9 +2,11 @@
 
 A simple Fabric library that provides a shared [NATS](https://nats.io) connection for Minecraft servers.
 
-## What it does
+## Features
 
-Instead of every mod opening its own NATS connection, they can share one through this library. This keeps resource usage low and simplifies your configuration files.
+- **Shared Connection:** Multiple mods can utilize a single, high-performance NATS connection, reducing overhead.
+- **Connection Watchdog:** Hardened background watchdog with infinite retry logic. It ensures the connection stays alive and recovers automatically from network failures.
+- **Event API:** Hooks for `CONNECTED`, `RECONNECTED`, and `DISCONNECTED` events, allowing mods to react dynamically to network state changes.
 
 ## Setup
 
@@ -19,7 +21,7 @@ natsUsername: ""
 natsPassword: ""
 ```
 
-`serverName` should be unique for each server in your cluster.
+`serverName` should be unique for each server in your cluster. This ID is used for session locking and RPC hand-offs.
 
 ## Requirements
 
