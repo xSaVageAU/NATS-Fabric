@@ -14,21 +14,21 @@ public class NATSFabric implements ModInitializer {
 
 	@Override
 	public void onInitialize() {
-		LOGGER.info("[NATS-Fabric] Initializing Core NATS Library");
+		LOGGER.info("[NATS-Lib] Initializing Core NATS Library");
 
 		// Initialize NatsManager singleton config
 		NatsManager.getInstance();
 
 		net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STARTED.register(server -> {
-			LOGGER.info("[NATS-Fabric] Starting NATS connection...");
+			LOGGER.info("[NATS-Lib] Starting NATS connection...");
 			NatsManager.getInstance().connect();
 		});
 
 		net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
-			LOGGER.info("[NATS-Fabric] Stopping NATS connection...");
+			LOGGER.info("[NATS-Lib] Stopping NATS connection...");
 			NatsManager.getInstance().disconnect();
 		});
 
-		LOGGER.info("[NATS-Fabric] Core Library Ready");
+		LOGGER.info("[NATS-Lib] Core Library Ready");
 	}
 }

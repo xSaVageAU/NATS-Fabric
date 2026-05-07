@@ -50,23 +50,31 @@ public class NatsManager {
 
         natsExecutor.execute(() -> {
             try {
-                NATSFabric.LOGGER.info("[NATS] Starting persistent connection watchdog...");
+                NATSFabric.LOGGER.info("[NATS-Lib] Starting persistent connection watchdog...");
 
                 while (natsConnection == null || natsConnection.getStatus() == Connection.Status.CLOSED) {
                     try {
-                        NATSFabric.LOGGER.info("[NATS] Connecting to {} (ident: {})", config.natsUrl, config.serverName);
+                        NATSFabric.LOGGER.info("[NATS-Lib] Connecting to {} (ident: {})", config.natsUrl, config.serverName);
 
                         Options.Builder builder = new Options.Builder()
                                 .server(config.natsUrl)
                                 .connectionName("FabricLibrary-" + config.serverName)
                                 .maxReconnects(-1) // Infinite reconnects once connected
                                 .reconnectWait(Duration.ofSeconds(2))
-                                .connectionListener((conn, type) ->
-                                        NATSFabric.LOGGER.info("[NATS] Connection event: {}", type))
+                                .connectionListener((conn, type) -> {
+                                    NATSFabric.LOGGER.info("[NATS-Lib] Connection event: {}", type);
+                                    if (type == ConnectionListener.Events.CONNECTED) {
+                                        savage.natsfabric.event.NatsConnectionEvents.CONNECTED.invoker().onConnected(conn);
+                                    } else if (type == ConnectionListener.Events.RECONNECTED) {
+                                        savage.natsfabric.event.NatsConnectionEvents.RECONNECTED.invoker().onReconnected(conn);
+                                    } else if (type == ConnectionListener.Events.DISCONNECTED) {
+                                        savage.natsfabric.event.NatsConnectionEvents.DISCONNECTED.invoker().onDisconnected(conn);
+                                    }
+                                })
                                 .errorListener(new ErrorListener() {
                                     @Override
                                     public void errorOccurred(Connection conn, String error) {
-                                        NATSFabric.LOGGER.error("[NATS] Error: {}", error);
+                                        NATSFabric.LOGGER.error("[NATS-Lib] Error: {}", error);
                                     }
                                 });
 
@@ -81,15 +89,15 @@ public class NatsManager {
 
                         try {
                             jetStream = natsConnection.jetStream();
-                            NATSFabric.LOGGER.info("[NATS] JetStream initialized");
+                            NATSFabric.LOGGER.info("[NATS-Lib] JetStream initialized");
                         } catch (Exception e) {
-                            NATSFabric.LOGGER.warn("[NATS] JetStream unavailable: {}", e.getMessage());
+                            NATSFabric.LOGGER.warn("[NATS-Lib] JetStream unavailable: {}", e.getMessage());
                         }
 
-                        NATSFabric.LOGGER.info("[NATS] Core connection established");
+                        NATSFabric.LOGGER.info("[NATS-Lib] Core connection established");
                         break; // Exit loop on success
                     } catch (Exception e) {
-                        NATSFabric.LOGGER.error("[NATS] Initial connection failed: {}. Retrying in 5 seconds...", e.getMessage());
+                        NATSFabric.LOGGER.error("[NATS-Lib] Initial connection failed: {}. Retrying in 5 seconds...", e.getMessage());
                         try {
                             TimeUnit.SECONDS.sleep(5);
                         } catch (InterruptedException ie) {
@@ -117,10 +125,10 @@ public class NatsManager {
         if (natsConnection != null) {
             try {
                 natsConnection.close();
-                NATSFabric.LOGGER.info("[NATS] Connection closed");
+                NATSFabric.LOGGER.info("[NATS-Lib] Connection closed");
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                NATSFabric.LOGGER.error("[NATS] Shutdown interrupted", e);
+                NATSFabric.LOGGER.error("[NATS-Lib] Shutdown interrupted", e);
             }
             natsConnection = null;
             jetStream = null;
