@@ -7,6 +7,7 @@ import java.time.Duration;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Core NATS Manager for Fabric.
@@ -20,6 +21,7 @@ public class NatsManager {
     private final ExecutorService natsExecutor;
     private volatile Connection natsConnection;
     private volatile JetStream jetStream;
+    private final AtomicBoolean isConnecting = new AtomicBoolean(false);
 
     private NatsManager() {
         this.config = NatsConfig.load();
@@ -39,47 +41,67 @@ public class NatsManager {
     }
 
     /**
-     * Attempts to connect to the NATS server asynchronously.
+     * Attempts to connect to the NATS server.
+     * This will run in a background thread and retry indefinitely if the initial connection fails.
      */
     public void connect() {
-        try {
-            NATSFabric.LOGGER.info("[NATS] Connecting to {} (ident: {})", config.natsUrl, config.serverName);
+        if (natsConnection != null && natsConnection.getStatus() != Connection.Status.CLOSED) return;
+        if (isConnecting.getAndSet(true)) return;
 
-            Options.Builder builder = new Options.Builder()
-                    .server(config.natsUrl)
-                    .connectionName("FabricLibrary-" + config.serverName)
-                    .maxReconnects(-1)
-                    .reconnectWait(Duration.ofSeconds(2))
-                    .connectionListener((conn, type) ->
-                            NATSFabric.LOGGER.info("[NATS] Connection event: {}", type))
-                    .errorListener(new ErrorListener() {
-                        @Override
-                        public void errorOccurred(Connection conn, String error) {
-                            NATSFabric.LOGGER.error("[NATS] Error: {}", error);
-                        }
-                    });
-
-            if (config.natsAuthToken != null && !config.natsAuthToken.isEmpty()) {
-                builder.token(config.natsAuthToken.toCharArray());
-            } else if (config.natsUsername != null && !config.natsUsername.isEmpty()) {
-                builder.userInfo(config.natsUsername.toCharArray(), config.natsPassword != null ? config.natsPassword.toCharArray() : new char[0]);
-            }
-
-            Options options = builder.build();
-
-            natsConnection = Nats.connect(options);
-
+        natsExecutor.execute(() -> {
             try {
-                jetStream = natsConnection.jetStream();
-                NATSFabric.LOGGER.info("[NATS] JetStream initialized");
-            } catch (Exception e) {
-                NATSFabric.LOGGER.warn("[NATS] JetStream unavailable: {}", e.getMessage());
-            }
+                NATSFabric.LOGGER.info("[NATS] Starting persistent connection watchdog...");
 
-            NATSFabric.LOGGER.info("[NATS] Core connection established");
-        } catch (Exception e) {
-            NATSFabric.LOGGER.error("[NATS] Critical failure during connection", e);
-        }
+                while (natsConnection == null || natsConnection.getStatus() == Connection.Status.CLOSED) {
+                    try {
+                        NATSFabric.LOGGER.info("[NATS] Connecting to {} (ident: {})", config.natsUrl, config.serverName);
+
+                        Options.Builder builder = new Options.Builder()
+                                .server(config.natsUrl)
+                                .connectionName("FabricLibrary-" + config.serverName)
+                                .maxReconnects(-1) // Infinite reconnects once connected
+                                .reconnectWait(Duration.ofSeconds(2))
+                                .connectionListener((conn, type) ->
+                                        NATSFabric.LOGGER.info("[NATS] Connection event: {}", type))
+                                .errorListener(new ErrorListener() {
+                                    @Override
+                                    public void errorOccurred(Connection conn, String error) {
+                                        NATSFabric.LOGGER.error("[NATS] Error: {}", error);
+                                    }
+                                });
+
+                        if (config.natsAuthToken != null && !config.natsAuthToken.isEmpty()) {
+                            builder.token(config.natsAuthToken.toCharArray());
+                        } else if (config.natsUsername != null && !config.natsUsername.isEmpty()) {
+                            builder.userInfo(config.natsUsername.toCharArray(), config.natsPassword != null ? config.natsPassword.toCharArray() : new char[0]);
+                        }
+
+                        // Synchronous connect call within our loop
+                        natsConnection = Nats.connect(builder.build());
+
+                        try {
+                            jetStream = natsConnection.jetStream();
+                            NATSFabric.LOGGER.info("[NATS] JetStream initialized");
+                        } catch (Exception e) {
+                            NATSFabric.LOGGER.warn("[NATS] JetStream unavailable: {}", e.getMessage());
+                        }
+
+                        NATSFabric.LOGGER.info("[NATS] Core connection established");
+                        break; // Exit loop on success
+                    } catch (Exception e) {
+                        NATSFabric.LOGGER.error("[NATS] Initial connection failed: {}. Retrying in 5 seconds...", e.getMessage());
+                        try {
+                            TimeUnit.SECONDS.sleep(5);
+                        } catch (InterruptedException ie) {
+                            Thread.currentThread().interrupt();
+                            return;
+                        }
+                    }
+                }
+            } finally {
+                isConnecting.set(false);
+            }
+        });
     }
 
     /**
