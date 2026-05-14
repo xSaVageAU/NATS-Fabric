@@ -121,6 +121,20 @@ public class NatsManager {
         connect();
     }
 
+    /**
+     * Flushes the underlying NATS connection to ensure all messages are sent.
+     * @param timeout The maximum time to wait for the flush.
+     */
+    public void flush(Duration timeout) {
+        if (natsConnection != null && natsConnection.getStatus() == Connection.Status.CONNECTED) {
+            try {
+                natsConnection.flush(timeout);
+            } catch (Exception e) {
+                NATSFabric.LOGGER.error("[NATS-Lib] Flush failed: {}", e.getMessage());
+            }
+        }
+    }
+
     public void disconnect() {
         if (natsConnection != null) {
             try {
