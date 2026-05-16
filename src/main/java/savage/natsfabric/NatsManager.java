@@ -30,14 +30,7 @@ public class NatsManager {
     private final AtomicBoolean isConnecting = new AtomicBoolean(false);
     private final Map<String, ShutdownHook> shutdownHooks = new ConcurrentHashMap<>();
 
-    private NatsManager() {
-        this.config = NatsConfig.load();
-        this.natsExecutor = Executors.newVirtualThreadPerTaskExecutor();
-    }
-
-    public ExecutorService getExecutor() {
-        return natsExecutor;
-    }
+    // --- Static access ---
 
     public static NatsManager getInstance() {
         return Holder.INSTANCE;
@@ -46,6 +39,15 @@ public class NatsManager {
     private static class Holder {
         private static final NatsManager INSTANCE = new NatsManager();
     }
+
+    // --- Constructor ---
+
+    private NatsManager() {
+        this.config = NatsConfig.load();
+        this.natsExecutor = Executors.newVirtualThreadPerTaskExecutor();
+    }
+
+    // --- Lifecycle ---
 
     /**
      * Attempts to connect to the NATS server.
@@ -90,6 +92,135 @@ public class NatsManager {
         });
     }
 
+    /**
+     * Runs shutdown hooks and closes the NATS connection. Does not terminate the executor.
+     */
+    public void disconnect() {
+        if (!shutdownHooks.isEmpty()) {
+            NATSFabric.LOGGER.info("[NATS-Lib] Executing {} registered shutdown hooks...", shutdownHooks.size());
+
+            List<CompletableFuture<Void>> futures = new ArrayList<>();
+            shutdownHooks.forEach((modId, hook) -> {
+                try {
+                    futures.add(hook.onShutdown());
+                } catch (Exception e) {
+                    NATSFabric.LOGGER.error("[NATS-Lib] Failed to trigger shutdown hook for mod {}: {}", modId, e.getMessage());
+                }
+            });
+
+            if (!futures.isEmpty()) {
+                try {
+                    CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+                            .get(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                    NATSFabric.LOGGER.info("[NATS-Lib] All shutdown hooks completed successfully.");
+                } catch (Exception e) {
+                    NATSFabric.LOGGER.warn("[NATS-Lib] Shutdown hooks did not complete in time or failed: {}", e.getMessage());
+                }
+            }
+        }
+
+        if (natsConnection != null) {
+            try {
+                natsConnection.close();
+                NATSFabric.LOGGER.info("[NATS-Lib] Connection closed");
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                NATSFabric.LOGGER.error("[NATS-Lib] Shutdown interrupted", e);
+            }
+            natsConnection = null;
+            jetStream = null;
+        }
+    }
+
+    /**
+     * Full teardown: disconnects and terminates the executor. Only call on final server stop.
+     */
+    public void shutdown() {
+        disconnect();
+
+        natsExecutor.shutdown();
+        try {
+            if (!natsExecutor.awaitTermination(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                natsExecutor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            natsExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /**
+     * Re-reads the config from disk and reconnects.
+     */
+    public void reload() {
+        disconnect();
+        this.config = NatsConfig.load();
+        connect();
+    }
+
+    // --- Consumer API ---
+
+    /** @return the active NATS connection, or null if not connected. */
+    public Connection getConnection() {
+        Connection conn = natsConnection;
+        return conn != null && conn.getStatus() == Connection.Status.CONNECTED ? conn : null;
+    }
+
+    /** @return the active JetStream context, or null if JS is unavailable or not connected. */
+    public JetStream getJetStream() {
+        Connection conn = natsConnection;
+        return conn != null && conn.getStatus() == Connection.Status.CONNECTED ? jetStream : null;
+    }
+
+    public boolean isConnected() {
+        Connection conn = natsConnection;
+        return conn != null && conn.getStatus() == Connection.Status.CONNECTED;
+    }
+
+    public String getServerName() {
+        return config.serverName;
+    }
+
+    /**
+     * Flushes the underlying NATS connection to ensure all messages are sent.
+     * @param timeout The maximum time to wait for the flush.
+     */
+    public void flush(Duration timeout) {
+        Connection conn = natsConnection;
+        if (conn != null && conn.getStatus() == Connection.Status.CONNECTED) {
+            try {
+                conn.flush(timeout);
+            } catch (Exception e) {
+                NATSFabric.LOGGER.error("[NATS-Lib] Flush failed: {}", e.getMessage());
+            }
+        }
+    }
+
+    // --- Hooks ---
+
+    /**
+     * Registers a shutdown hook that must complete before the NATS connection is closed.
+     * @param modId The ID of the mod registering the hook.
+     * @param hook  The hook implementation.
+     */
+    public void registerShutdownHook(String modId, ShutdownHook hook) {
+        shutdownHooks.put(modId, hook);
+        NATSFabric.LOGGER.info("[NATS-Lib] Registered shutdown hook for mod: {}", modId);
+    }
+
+    /** Removes a previously registered shutdown hook. */
+    public void unregisterShutdownHook(String modId) {
+        shutdownHooks.remove(modId);
+        NATSFabric.LOGGER.info("[NATS-Lib] Unregistered shutdown hook for mod: {}", modId);
+    }
+
+    // --- Internals ---
+
+    /** Returns the shared virtual-thread executor. */
+    public ExecutorService getExecutor() {
+        return natsExecutor;
+    }
+
     /** Builds the NATS connection options from the current config. */
     private Options buildOptions() {
         Options.Builder builder = new Options.Builder()
@@ -122,135 +253,5 @@ public class NatsManager {
         }
 
         return builder.build();
-    }
-
-    /**
-     * Re-reads the config from disk and reconnects.
-     */
-    public void reload() {
-        disconnect();
-        this.config = NatsConfig.load();
-        connect();
-    }
-
-    /**
-     * Flushes the underlying NATS connection to ensure all messages are sent.
-     * 
-     * @param timeout The maximum time to wait for the flush.
-     */
-    public void flush(Duration timeout) {
-        Connection conn = natsConnection;
-        if (conn != null && conn.getStatus() == Connection.Status.CONNECTED) {
-            try {
-                conn.flush(timeout);
-            } catch (Exception e) {
-                NATSFabric.LOGGER.error("[NATS-Lib] Flush failed: {}", e.getMessage());
-            }
-        }
-    }
-
-    /**
-     * Registers a shutdown hook that must complete before the NATS connection is
-     * closed.
-     * 
-     * @param modId The ID of the mod registering the hook.
-     * @param hook  The hook implementation.
-     */
-    public void registerShutdownHook(String modId, ShutdownHook hook) {
-        shutdownHooks.put(modId, hook);
-        NATSFabric.LOGGER.info("[NATS-Lib] Registered shutdown hook for mod: {}", modId);
-    }
-
-    /** Removes a previously registered shutdown hook. */
-    public void unregisterShutdownHook(String modId) {
-        shutdownHooks.remove(modId);
-        NATSFabric.LOGGER.info("[NATS-Lib] Unregistered shutdown hook for mod: {}", modId);
-    }
-
-    /**
-     * Runs shutdown hooks and closes the NATS connection. Does not terminate the
-     * executor.
-     */
-    public void disconnect() {
-        if (!shutdownHooks.isEmpty()) {
-            NATSFabric.LOGGER.info("[NATS-Lib] Executing {} registered shutdown hooks...", shutdownHooks.size());
-
-            List<CompletableFuture<Void>> futures = new ArrayList<>();
-            shutdownHooks.forEach((modId, hook) -> {
-                try {
-                    futures.add(hook.onShutdown());
-                } catch (Exception e) {
-                    NATSFabric.LOGGER.error("[NATS-Lib] Failed to trigger shutdown hook for mod {}: {}", modId,
-                            e.getMessage());
-                }
-            });
-
-            if (!futures.isEmpty()) {
-                try {
-                    CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-                            .get(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-                    NATSFabric.LOGGER.info("[NATS-Lib] All shutdown hooks completed successfully.");
-                } catch (Exception e) {
-                    NATSFabric.LOGGER.warn("[NATS-Lib] Shutdown hooks did not complete in time or failed: {}",
-                            e.getMessage());
-                }
-            }
-        }
-
-        if (natsConnection != null) {
-            try {
-                natsConnection.close();
-                NATSFabric.LOGGER.info("[NATS-Lib] Connection closed");
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                NATSFabric.LOGGER.error("[NATS-Lib] Shutdown interrupted", e);
-            }
-            natsConnection = null;
-            jetStream = null;
-        }
-    }
-
-    /**
-     * Full teardown: disconnects and terminates the executor. Only call on final
-     * server stop.
-     */
-    public void shutdown() {
-        disconnect();
-
-        natsExecutor.shutdown();
-        try {
-            if (!natsExecutor.awaitTermination(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
-                natsExecutor.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            natsExecutor.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    /**
-     * @return the active NATS connection, or null if not connected.
-     */
-    public Connection getConnection() {
-        Connection conn = natsConnection;
-        return conn != null && conn.getStatus() == Connection.Status.CONNECTED ? conn : null;
-    }
-
-    /**
-     * @return the active JetStream context, or null if JS is unavailable or not
-     *         connected.
-     */
-    public JetStream getJetStream() {
-        Connection conn = natsConnection;
-        return conn != null && conn.getStatus() == Connection.Status.CONNECTED ? jetStream : null;
-    }
-
-    public boolean isConnected() {
-        Connection conn = natsConnection;
-        return conn != null && conn.getStatus() == Connection.Status.CONNECTED;
-    }
-
-    public String getServerName() {
-        return config.serverName;
     }
 }
