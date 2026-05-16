@@ -147,6 +147,9 @@ public class NatsManager {
         NATSFabric.LOGGER.info("[NATS-Lib] Registered shutdown hook for mod: {}", modId);
     }
 
+    /**
+     * Runs shutdown hooks and closes the NATS connection. Does not terminate the executor.
+     */
     public void disconnect() {
         if (!shutdownHooks.isEmpty()) {
             NATSFabric.LOGGER.info("[NATS-Lib] Executing {} registered shutdown hooks...", shutdownHooks.size());
@@ -182,6 +185,13 @@ public class NatsManager {
             natsConnection = null;
             jetStream = null;
         }
+    }
+
+    /**
+     * Full teardown: disconnects and terminates the executor. Only call on final server stop.
+     */
+    public void shutdown() {
+        disconnect();
 
         natsExecutor.shutdown();
         try {
