@@ -5,11 +5,6 @@ import savage.natsfabric.config.NatsConfig;
 import savage.natsfabric.event.NatsConnectionEvents;
 
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -28,7 +23,6 @@ public class NatsManager {
     private volatile Connection natsConnection;
     private volatile JetStream jetStream;
     private final AtomicBoolean isConnecting = new AtomicBoolean(false);
-    private final Map<String, ShutdownHook> shutdownHooks = new ConcurrentHashMap<>();
 
     // --- Static access ---
 
@@ -93,32 +87,9 @@ public class NatsManager {
     }
 
     /**
-     * Runs shutdown hooks and closes the NATS connection. Does not terminate the executor.
+     * Closes the NATS connection.
      */
     public void disconnect() {
-        if (!shutdownHooks.isEmpty()) {
-            NATSFabric.LOGGER.info("[NATS-Lib] Executing {} registered shutdown hooks...", shutdownHooks.size());
-
-            List<CompletableFuture<Void>> futures = new ArrayList<>();
-            shutdownHooks.forEach((modId, hook) -> {
-                try {
-                    futures.add(hook.onShutdown());
-                } catch (Exception e) {
-                    NATSFabric.LOGGER.error("[NATS-Lib] Failed to trigger shutdown hook for mod {}: {}", modId, e.getMessage());
-                }
-            });
-
-            if (!futures.isEmpty()) {
-                try {
-                    CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-                            .get(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-                    NATSFabric.LOGGER.info("[NATS-Lib] All shutdown hooks completed successfully.");
-                } catch (Exception e) {
-                    NATSFabric.LOGGER.warn("[NATS-Lib] Shutdown hooks did not complete in time or failed: {}", e.getMessage());
-                }
-            }
-        }
-
         if (natsConnection != null) {
             try {
                 natsConnection.close();
@@ -179,42 +150,6 @@ public class NatsManager {
 
     public String getServerName() {
         return config.serverName;
-    }
-
-    /**
-     * Flushes the underlying NATS connection to ensure all messages are sent.
-     * @param timeout The maximum time to wait for the flush.
-     */
-    public void flush(Duration timeout) {
-        Connection conn = natsConnection;
-        if (conn != null && conn.getStatus() == Connection.Status.CONNECTED) {
-            try {
-                conn.flush(timeout);
-            } catch (Exception e) {
-                NATSFabric.LOGGER.error("[NATS-Lib] Flush failed: {}", e.getMessage());
-            }
-        }
-    }
-
-    // --- Hooks ---
-
-    /**
-     * Registers a shutdown hook that must complete before the NATS connection is closed.
-     * @param modId The ID of the mod registering the hook.
-     * @param hook  The hook implementation.
-     */
-    public void registerShutdownHook(String modId, ShutdownHook hook) {
-        shutdownHooks.put(modId, hook);
-        NATSFabric.LOGGER.info("[NATS-Lib] Registered shutdown hook for mod: {}", modId);
-    }
-
-    /** Removes a previously registered shutdown hook. */
-    public void unregisterShutdownHook(String modId) {
-        if (shutdownHooks.remove(modId) != null) {
-            NATSFabric.LOGGER.info("[NATS-Lib] Unregistered shutdown hook for mod: {}", modId);
-        } else {
-            NATSFabric.LOGGER.warn("[NATS-Lib] No shutdown hook registered for mod: {}", modId);
-        }
     }
 
     // --- Internals ---
