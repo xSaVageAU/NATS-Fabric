@@ -4,6 +4,7 @@ import io.nats.client.*;
 import savage.natsfabric.config.NatsConfig;
 
 import java.time.Duration;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -22,6 +23,7 @@ public class NatsManager {
     private volatile Connection natsConnection;
     private volatile JetStream jetStream;
     private final AtomicBoolean isConnecting = new AtomicBoolean(false);
+    private final java.util.Map<String, ShutdownHook> shutdownHooks = new java.util.concurrent.ConcurrentHashMap<>();
 
     private NatsManager() {
         this.config = NatsConfig.load();
@@ -135,7 +137,40 @@ public class NatsManager {
         }
     }
 
+    /**
+     * Registers a shutdown hook that must complete before the NATS connection is closed.
+     * @param modId The ID of the mod registering the hook.
+     * @param hook The hook implementation.
+     */
+    public void registerShutdownHook(String modId, ShutdownHook hook) {
+        shutdownHooks.put(modId, hook);
+        NATSFabric.LOGGER.info("[NATS-Lib] Registered shutdown hook for mod: {}", modId);
+    }
+
     public void disconnect() {
+        if (!shutdownHooks.isEmpty()) {
+            NATSFabric.LOGGER.info("[NATS-Lib] Executing {} registered shutdown hooks...", shutdownHooks.size());
+            
+            java.util.List<CompletableFuture<Void>> futures = new java.util.ArrayList<>();
+            shutdownHooks.forEach((modId, hook) -> {
+                try {
+                    futures.add(hook.onShutdown());
+                } catch (Exception e) {
+                    NATSFabric.LOGGER.error("[NATS-Lib] Failed to trigger shutdown hook for mod {}: {}", modId, e.getMessage());
+                }
+            });
+
+            if (!futures.isEmpty()) {
+                try {
+                    CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+                        .get(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                    NATSFabric.LOGGER.info("[NATS-Lib] All shutdown hooks completed successfully.");
+                } catch (Exception e) {
+                    NATSFabric.LOGGER.warn("[NATS-Lib] Shutdown hooks did not complete in time or failed: {}", e.getMessage());
+                }
+            }
+        }
+
         if (natsConnection != null) {
             try {
                 natsConnection.close();

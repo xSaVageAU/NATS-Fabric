@@ -24,8 +24,8 @@ public class NATSFabric implements ModInitializer {
 			NatsManager.getInstance().connect();
 		});
 
-		net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
-			LOGGER.info("[NATS-Lib] Stopping NATS connection...");
+		net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
+			LOGGER.info("[NATS-Lib] Server stopping. Initiating clean library shutdown...");
 			NatsManager.getInstance().disconnect();
 		});
 
