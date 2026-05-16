@@ -1,41 +1,34 @@
 package savage.natsfabric.config;
 
-import com.google.gson.*;
-import net.fabricmc.loader.api.FabricLoader;
-import savage.natsfabric.NATSFabric;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
- * Configuration for the NATS connection.
+ * Configuration data for the NATS connection.
+ *
+ * <p>When adding a new config field:</p>
+ * <ol>
+ *   <li>Add the Java field with its default value below.</li>
+ *   <li>Add a matching {@link ConfigField} entry to {@link #CONFIG_FIELDS}.</li>
+ *   <li>Add a mapping line in {@link #fromJson}.</li>
+ * </ol>
+ * The loading machinery in {@link NatsConfigLoader} does not need to change.
  */
 public class NatsConfig {
 
     // --- Fields ---
-    public String serverName           = "server-1";
-    public String natsUrl              = "nats://127.0.0.1:4222";
-    public String natsAuthToken        = "";
-    public String natsUsername         = "";
-    public String natsPassword         = "";
+    public String serverName             = "server-1";
+    public String natsUrl                = "nats://127.0.0.1:4222";
+    public String natsAuthToken          = "";
+    public String natsUsername           = "";
+    public String natsPassword           = "";
     public int    shutdownTimeoutSeconds = 10;
 
-    // --- Config infrastructure ---
-
-    private static final Path CONFIG_PATH =
-            FabricLoader.getInstance().getConfigDir().resolve("nats-fabric.json");
-
-    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-
-    /**
-     * Ordered field definitions. When adding a new config field to this class,
-     * add a matching entry here to ensure it is created and inserted correctly.
-     */
-    private static final List<ConfigField> CONFIG_FIELDS = List.of(
+    // --- Field registry ---
+    // Add an entry here (in order) when adding a new field above.
+    static final List<ConfigField> CONFIG_FIELDS = List.of(
             new ConfigField("serverName",             "server-1"),
             new ConfigField("natsUrl",                "nats://127.0.0.1:4222"),
             new ConfigField("natsAuthToken",          ""),
@@ -44,75 +37,18 @@ public class NatsConfig {
             new ConfigField("shutdownTimeoutSeconds", "10")
     );
 
-    private record ConfigField(String key, String defaultValue) {}
+    record ConfigField(String key, String defaultValue) {}
 
-    // --- Public API ---
+    // --- Loader delegate ---
 
-    /**
-     * Loads the config from disk. Creates it on first run.
-     * Inserts any missing fields (e.g. from a version update) in their correct position.
-     * Throws if the file cannot be read or parsed — does not silently fall back to defaults.
-     */
+    /** Loads the config from disk. See {@link NatsConfigLoader} for the full behaviour. */
     public static NatsConfig load() {
-        try {
-            Files.createDirectories(CONFIG_PATH.getParent());
-        } catch (IOException e) {
-            throw new RuntimeException("[NatsConfig] Cannot create config directory: " + e.getMessage(), e);
-        }
-
-        if (!Files.exists(CONFIG_PATH)) {
-            writeJson(buildJson(null));
-            NATSFabric.LOGGER.info("[NatsConfig] Created default config at {}", CONFIG_PATH);
-            return new NatsConfig();
-        }
-
-        JsonObject existing = parseJson();
-
-        // Warn about unknown keys — likely a typo or a field removed in a newer version
-        Set<String> knownKeys = CONFIG_FIELDS.stream()
-                .map(ConfigField::key)
-                .collect(Collectors.toSet());
-        existing.keySet().stream()
-                .filter(k -> !knownKeys.contains(k))
-                .forEach(k -> NATSFabric.LOGGER.warn("[NatsConfig] Unknown field '{}' in config — possible typo?", k));
-
-        // Detect missing fields (new version added options the user's file doesn't have yet)
-        List<String> missing = CONFIG_FIELDS.stream()
-                .filter(f -> !existing.has(f.key()))
-                .map(ConfigField::key)
-                .toList();
-
-        // Rebuild in CONFIG_FIELDS order, inserting defaults for any missing fields
-        JsonObject merged = buildJson(existing);
-
-        if (!missing.isEmpty()) {
-            NATSFabric.LOGGER.warn("[NatsConfig] New config fields detected, inserting defaults: {}", missing);
-            writeJson(merged);
-        }
-
-        return fromJson(merged);
+        return NatsConfigLoader.load();
     }
 
-    // --- Private helpers ---
-
-    /**
-     * Builds a JsonObject in CONFIG_FIELDS order.
-     * Copies values from {@code existing} where present; uses field defaults otherwise.
-     * Pass {@code null} for existing to generate a full-defaults object.
-     */
-    private static JsonObject buildJson(JsonObject existing) {
-        JsonObject out = new JsonObject();
-        for (ConfigField f : CONFIG_FIELDS) {
-            if (existing != null && existing.has(f.key())) {
-                out.add(f.key(), existing.get(f.key()));
-            } else {
-                out.addProperty(f.key(), f.defaultValue());
-            }
-        }
-        return out;
-    }
-
-    private static NatsConfig fromJson(JsonObject obj) {
+    // --- JSON mapping ---
+    // Add a mapping line here when adding a new field above.
+    static NatsConfig fromJson(JsonObject obj) {
         NatsConfig cfg = new NatsConfig();
         cfg.serverName             = getString(obj, "serverName",             cfg.serverName);
         cfg.natsUrl                = getString(obj, "natsUrl",                cfg.natsUrl);
@@ -133,30 +69,5 @@ public class NatsConfig {
         if (el == null || el.isJsonNull()) return fallback;
         int val = el.getAsInt();
         return val > 0 ? val : fallback;
-    }
-
-    private static JsonObject parseJson() {
-        try (var reader = Files.newBufferedReader(CONFIG_PATH)) {
-            JsonElement el = JsonParser.parseReader(reader);
-            if (!el.isJsonObject()) {
-                throw new RuntimeException(
-                        "[NatsConfig] Config is not a valid JSON object. Fix or delete: " + CONFIG_PATH);
-            }
-            return el.getAsJsonObject();
-        } catch (RuntimeException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new RuntimeException(
-                    "[NatsConfig] Config cannot be parsed. Fix or delete: " + CONFIG_PATH
-                    + "\n  Cause: " + e.getMessage(), e);
-        }
-    }
-
-    private static void writeJson(JsonObject obj) {
-        try {
-            Files.writeString(CONFIG_PATH, GSON.toJson(obj));
-        } catch (Exception e) {
-            throw new RuntimeException("[NatsConfig] Failed to write config: " + e.getMessage(), e);
-        }
     }
 }
