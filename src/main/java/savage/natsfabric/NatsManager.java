@@ -44,11 +44,14 @@ public class NatsManager {
 
     /**
      * Attempts to connect to the NATS server.
-     * This will run in a background thread and retry indefinitely if the initial connection fails.
+     * This will run in a background thread and retry indefinitely if the initial
+     * connection fails.
      */
     public void connect() {
-        if (natsConnection != null && natsConnection.getStatus() != Connection.Status.CLOSED) return;
-        if (isConnecting.getAndSet(true)) return;
+        if (natsConnection != null && natsConnection.getStatus() != Connection.Status.CLOSED)
+            return;
+        if (isConnecting.getAndSet(true))
+            return;
 
         natsExecutor.execute(() -> {
             try {
@@ -56,7 +59,8 @@ public class NatsManager {
 
                 while (natsConnection == null || natsConnection.getStatus() == Connection.Status.CLOSED) {
                     try {
-                        NATSFabric.LOGGER.info("[NATS-Lib] Connecting to {} (ident: {})", config.natsUrl, config.serverName);
+                        NATSFabric.LOGGER.info("[NATS-Lib] Connecting to {} (ident: {})", config.natsUrl,
+                                config.serverName);
 
                         Options.Builder builder = new Options.Builder()
                                 .server(config.natsUrl)
@@ -66,11 +70,14 @@ public class NatsManager {
                                 .connectionListener((conn, type) -> {
                                     NATSFabric.LOGGER.info("[NATS-Lib] Connection event: {}", type);
                                     if (type == ConnectionListener.Events.CONNECTED) {
-                                        savage.natsfabric.event.NatsConnectionEvents.CONNECTED.invoker().onConnected(conn);
+                                        savage.natsfabric.event.NatsConnectionEvents.CONNECTED.invoker()
+                                                .onConnected(conn);
                                     } else if (type == ConnectionListener.Events.RECONNECTED) {
-                                        savage.natsfabric.event.NatsConnectionEvents.RECONNECTED.invoker().onReconnected(conn);
+                                        savage.natsfabric.event.NatsConnectionEvents.RECONNECTED.invoker()
+                                                .onReconnected(conn);
                                     } else if (type == ConnectionListener.Events.DISCONNECTED) {
-                                        savage.natsfabric.event.NatsConnectionEvents.DISCONNECTED.invoker().onDisconnected(conn);
+                                        savage.natsfabric.event.NatsConnectionEvents.DISCONNECTED.invoker()
+                                                .onDisconnected(conn);
                                     }
                                 })
                                 .errorListener(new ErrorListener() {
@@ -83,7 +90,8 @@ public class NatsManager {
                         if (config.natsAuthToken != null && !config.natsAuthToken.isEmpty()) {
                             builder.token(config.natsAuthToken.toCharArray());
                         } else if (config.natsUsername != null && !config.natsUsername.isEmpty()) {
-                            builder.userInfo(config.natsUsername.toCharArray(), config.natsPassword != null ? config.natsPassword.toCharArray() : new char[0]);
+                            builder.userInfo(config.natsUsername.toCharArray(),
+                                    config.natsPassword != null ? config.natsPassword.toCharArray() : new char[0]);
                         }
 
                         // Synchronous connect call within our loop
@@ -99,7 +107,8 @@ public class NatsManager {
                         NATSFabric.LOGGER.info("[NATS-Lib] Core connection established");
                         break; // Exit loop on success
                     } catch (Exception e) {
-                        NATSFabric.LOGGER.error("[NATS-Lib] Initial connection failed: {}. Retrying in 5 seconds...", e.getMessage());
+                        NATSFabric.LOGGER.error("[NATS-Lib] Initial connection failed: {}. Retrying in 5 seconds...",
+                                e.getMessage());
                         try {
                             TimeUnit.SECONDS.sleep(5);
                         } catch (InterruptedException ie) {
@@ -125,6 +134,7 @@ public class NatsManager {
 
     /**
      * Flushes the underlying NATS connection to ensure all messages are sent.
+     * 
      * @param timeout The maximum time to wait for the flush.
      */
     public void flush(Duration timeout) {
@@ -139,9 +149,11 @@ public class NatsManager {
     }
 
     /**
-     * Registers a shutdown hook that must complete before the NATS connection is closed.
+     * Registers a shutdown hook that must complete before the NATS connection is
+     * closed.
+     * 
      * @param modId The ID of the mod registering the hook.
-     * @param hook The hook implementation.
+     * @param hook  The hook implementation.
      */
     public void registerShutdownHook(String modId, ShutdownHook hook) {
         shutdownHooks.put(modId, hook);
@@ -149,28 +161,31 @@ public class NatsManager {
     }
 
     /**
-     * Runs shutdown hooks and closes the NATS connection. Does not terminate the executor.
+     * Runs shutdown hooks and closes the NATS connection. Does not terminate the
+     * executor.
      */
     public void disconnect() {
         if (!shutdownHooks.isEmpty()) {
             NATSFabric.LOGGER.info("[NATS-Lib] Executing {} registered shutdown hooks...", shutdownHooks.size());
-            
+
             java.util.List<CompletableFuture<Void>> futures = new java.util.ArrayList<>();
             shutdownHooks.forEach((modId, hook) -> {
                 try {
                     futures.add(hook.onShutdown());
                 } catch (Exception e) {
-                    NATSFabric.LOGGER.error("[NATS-Lib] Failed to trigger shutdown hook for mod {}: {}", modId, e.getMessage());
+                    NATSFabric.LOGGER.error("[NATS-Lib] Failed to trigger shutdown hook for mod {}: {}", modId,
+                            e.getMessage());
                 }
             });
 
             if (!futures.isEmpty()) {
                 try {
                     CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-                        .get(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                            .get(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
                     NATSFabric.LOGGER.info("[NATS-Lib] All shutdown hooks completed successfully.");
                 } catch (Exception e) {
-                    NATSFabric.LOGGER.warn("[NATS-Lib] Shutdown hooks did not complete in time or failed: {}", e.getMessage());
+                    NATSFabric.LOGGER.warn("[NATS-Lib] Shutdown hooks did not complete in time or failed: {}",
+                            e.getMessage());
                 }
             }
         }
@@ -189,7 +204,8 @@ public class NatsManager {
     }
 
     /**
-     * Full teardown: disconnects and terminates the executor. Only call on final server stop.
+     * Full teardown: disconnects and terminates the executor. Only call on final
+     * server stop.
      */
     public void shutdown() {
         disconnect();
@@ -214,7 +230,8 @@ public class NatsManager {
     }
 
     /**
-     * @return the active JetStream context, or null if JS is unavailable or not connected.
+     * @return the active JetStream context, or null if JS is unavailable or not
+     *         connected.
      */
     public JetStream getJetStream() {
         Connection conn = natsConnection;
