@@ -18,7 +18,7 @@ public class NatsManager {
 
     private static final long SHUTDOWN_TIMEOUT_SECONDS = 5;
 
-    private final NatsConfig config;
+    private NatsConfig config;
     private final ExecutorService natsExecutor;
     private volatile Connection natsConnection;
     private volatile JetStream jetStream;
@@ -115,11 +115,11 @@ public class NatsManager {
     }
 
     /**
-     * Force a reload of the configuration and reconnect.
+     * Re-reads the config from disk and reconnects.
      */
     public void reload() {
         disconnect();
-        config.save(); // ensure current state is on disk if modified in memory
+        this.config = NatsConfig.load();
         connect();
     }
 
@@ -128,9 +128,10 @@ public class NatsManager {
      * @param timeout The maximum time to wait for the flush.
      */
     public void flush(Duration timeout) {
-        if (natsConnection != null && natsConnection.getStatus() == Connection.Status.CONNECTED) {
+        Connection conn = natsConnection;
+        if (conn != null && conn.getStatus() == Connection.Status.CONNECTED) {
             try {
-                natsConnection.flush(timeout);
+                conn.flush(timeout);
             } catch (Exception e) {
                 NATSFabric.LOGGER.error("[NATS-Lib] Flush failed: {}", e.getMessage());
             }
@@ -208,14 +209,16 @@ public class NatsManager {
      * @return the active NATS connection, or null if not connected.
      */
     public Connection getConnection() {
-        return natsConnection;
+        Connection conn = natsConnection;
+        return conn != null && conn.getStatus() == Connection.Status.CONNECTED ? conn : null;
     }
 
     /**
      * @return the active JetStream context, or null if JS is unavailable or not connected.
      */
     public JetStream getJetStream() {
-        return jetStream;
+        Connection conn = natsConnection;
+        return conn != null && conn.getStatus() == Connection.Status.CONNECTED ? jetStream : null;
     }
 
     public boolean isConnected() {
