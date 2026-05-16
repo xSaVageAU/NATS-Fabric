@@ -39,7 +39,22 @@ nats.getJetStream();    // returns null if unavailable
 
 // Reload config from disk and reconnect
 nats.reload();
+
+// --- Coordinated shutdown ---
+
+// Register at mod startup so the library waits for you before closing
+nats.registerClient("your-mod-id");
+nats.registerClient("your-mod-id", 30); // require at least 30s
+
+// Optionally update timeout at runtime (e.g. based on player count)
+nats.requestTimeout("your-mod-id", 60); // must be registered first
+
+// Signal cleanup is complete (call in SERVER_STOPPING or whenever done)
+nats.deregisterClient("your-mod-id");
 ```
+
+The effective shutdown timeout is `max(config.shutdownTimeoutSeconds, highest client request)`.
+Config default: `"shutdownTimeoutSeconds": 10`.
 
 ## Requirements
 

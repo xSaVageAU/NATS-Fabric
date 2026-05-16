@@ -17,11 +17,12 @@ import java.util.stream.Collectors;
 public class NatsConfig {
 
     // --- Fields ---
-    public String serverName    = "server-1";
-    public String natsUrl       = "nats://127.0.0.1:4222";
-    public String natsAuthToken = "";
-    public String natsUsername  = "";
-    public String natsPassword  = "";
+    public String serverName           = "server-1";
+    public String natsUrl              = "nats://127.0.0.1:4222";
+    public String natsAuthToken        = "";
+    public String natsUsername         = "";
+    public String natsPassword         = "";
+    public int    shutdownTimeoutSeconds = 10;
 
     // --- Config infrastructure ---
 
@@ -35,11 +36,12 @@ public class NatsConfig {
      * add a matching entry here to ensure it is created and inserted correctly.
      */
     private static final List<ConfigField> CONFIG_FIELDS = List.of(
-            new ConfigField("serverName",    "server-1"),
-            new ConfigField("natsUrl",       "nats://127.0.0.1:4222"),
-            new ConfigField("natsAuthToken", ""),
-            new ConfigField("natsUsername",  ""),
-            new ConfigField("natsPassword",  "")
+            new ConfigField("serverName",             "server-1"),
+            new ConfigField("natsUrl",                "nats://127.0.0.1:4222"),
+            new ConfigField("natsAuthToken",          ""),
+            new ConfigField("natsUsername",           ""),
+            new ConfigField("natsPassword",           ""),
+            new ConfigField("shutdownTimeoutSeconds", "10")
     );
 
     private record ConfigField(String key, String defaultValue) {}
@@ -112,17 +114,25 @@ public class NatsConfig {
 
     private static NatsConfig fromJson(JsonObject obj) {
         NatsConfig cfg = new NatsConfig();
-        cfg.serverName    = getString(obj, "serverName",    cfg.serverName);
-        cfg.natsUrl       = getString(obj, "natsUrl",       cfg.natsUrl);
-        cfg.natsAuthToken = getString(obj, "natsAuthToken", cfg.natsAuthToken);
-        cfg.natsUsername  = getString(obj, "natsUsername",  cfg.natsUsername);
-        cfg.natsPassword  = getString(obj, "natsPassword",  cfg.natsPassword);
+        cfg.serverName             = getString(obj, "serverName",             cfg.serverName);
+        cfg.natsUrl                = getString(obj, "natsUrl",                cfg.natsUrl);
+        cfg.natsAuthToken          = getString(obj, "natsAuthToken",          cfg.natsAuthToken);
+        cfg.natsUsername           = getString(obj, "natsUsername",           cfg.natsUsername);
+        cfg.natsPassword           = getString(obj, "natsPassword",           cfg.natsPassword);
+        cfg.shutdownTimeoutSeconds = getInt(obj,    "shutdownTimeoutSeconds", cfg.shutdownTimeoutSeconds);
         return cfg;
     }
 
     private static String getString(JsonObject obj, String key, String fallback) {
         JsonElement el = obj.get(key);
         return (el != null && !el.isJsonNull()) ? el.getAsString() : fallback;
+    }
+
+    private static int getInt(JsonObject obj, String key, int fallback) {
+        JsonElement el = obj.get(key);
+        if (el == null || el.isJsonNull()) return fallback;
+        int val = el.getAsInt();
+        return val > 0 ? val : fallback;
     }
 
     private static JsonObject parseJson() {

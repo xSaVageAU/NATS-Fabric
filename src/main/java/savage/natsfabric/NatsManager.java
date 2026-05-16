@@ -16,10 +16,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public class NatsManager {
 
-    private static final long SHUTDOWN_TIMEOUT_SECONDS = 5;
-
     private NatsConfig config;
     private final ExecutorService natsExecutor;
+    private final ShutdownCoordinator shutdownCoordinator = new ShutdownCoordinator();
     private volatile Connection natsConnection;
     private volatile JetStream jetStream;
     private final AtomicBoolean isConnecting = new AtomicBoolean(false);
@@ -87,9 +86,11 @@ public class NatsManager {
     }
 
     /**
-     * Closes the NATS connection.
+     * Waits for all registered clients to finish, then closes the NATS connection.
      */
     public void disconnect() {
+        shutdownCoordinator.awaitClients(config.shutdownTimeoutSeconds);
+
         if (natsConnection != null) {
             try {
                 natsConnection.close();
@@ -111,7 +112,7 @@ public class NatsManager {
 
         natsExecutor.shutdown();
         try {
-            if (!natsExecutor.awaitTermination(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+            if (!natsExecutor.awaitTermination(config.shutdownTimeoutSeconds, TimeUnit.SECONDS)) {
                 natsExecutor.shutdownNow();
             }
         } catch (InterruptedException e) {
@@ -150,6 +151,35 @@ public class NatsManager {
 
     public String getServerName() {
         return config.serverName;
+    }
+
+    // --- Client coordination ---
+
+    /** Registers a mod as a NATS client. The library will wait for it to deregister before closing on shutdown. */
+    public void registerClient(String modId) {
+        shutdownCoordinator.registerClient(modId);
+    }
+
+    /**
+     * Registers a mod as a NATS client with a minimum shutdown timeout requirement.
+     * @param modId          The mod ID.
+     * @param minimumSeconds Minimum seconds needed for cleanup. Overrides config only if higher.
+     */
+    public void registerClient(String modId, int minimumSeconds) {
+        shutdownCoordinator.registerClient(modId, minimumSeconds);
+    }
+
+    /**
+     * Updates the minimum timeout requirement for a registered client.
+     * Logs an error if the client is not registered.
+     */
+    public void requestTimeout(String modId, int minimumSeconds) {
+        shutdownCoordinator.requestTimeout(modId, minimumSeconds);
+    }
+
+    /** Signals that a client has completed its cleanup. */
+    public void deregisterClient(String modId) {
+        shutdownCoordinator.deregisterClient(modId);
     }
 
     // --- Internals ---
