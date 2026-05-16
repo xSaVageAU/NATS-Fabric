@@ -25,9 +25,6 @@ dependencies {
 
 	// NATS Client
 	include(implementation("io.nats:jnats:2.25.2"))
-
-	// YAML Parsing
-	include(implementation("org.yaml:snakeyaml:2.6"))
 }
 
 processResources {
