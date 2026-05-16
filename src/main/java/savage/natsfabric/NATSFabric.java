@@ -1,15 +1,13 @@
 package savage.natsfabric;
 
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/** Mod initializer for NATS-Fabric. Bootstraps the shared NATS connection on server start. */
 public class NATSFabric implements ModInitializer {
 	public static final String MOD_ID = "nats-fabric";
-
-	// This logger is used to write text to the console and the log file.
-	// It is considered best practice to use your mod id as the logger's name.
-	// That way, it's clear which mod wrote info, warnings, and errors.
 	public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
 
 	@Override
@@ -19,12 +17,12 @@ public class NATSFabric implements ModInitializer {
 		// Initialize NatsManager singleton config
 		NatsManager.getInstance();
 
-		net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
 			LOGGER.info("[NATS-Lib] Starting NATS connection...");
 			NatsManager.getInstance().connect();
 		});
 
-		net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
+		ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
 			LOGGER.info("[NATS-Lib] Server stopping. Initiating clean library shutdown...");
 			NatsManager.getInstance().shutdown();
 		});

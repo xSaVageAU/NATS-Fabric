@@ -2,9 +2,14 @@ package savage.natsfabric;
 
 import io.nats.client.*;
 import savage.natsfabric.config.NatsConfig;
+import savage.natsfabric.event.NatsConnectionEvents;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -23,7 +28,7 @@ public class NatsManager {
     private volatile Connection natsConnection;
     private volatile JetStream jetStream;
     private final AtomicBoolean isConnecting = new AtomicBoolean(false);
-    private final java.util.Map<String, ShutdownHook> shutdownHooks = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<String, ShutdownHook> shutdownHooks = new ConcurrentHashMap<>();
 
     private NatsManager() {
         this.config = NatsConfig.load();
@@ -70,14 +75,11 @@ public class NatsManager {
                                 .connectionListener((conn, type) -> {
                                     NATSFabric.LOGGER.info("[NATS-Lib] Connection event: {}", type);
                                     if (type == ConnectionListener.Events.CONNECTED) {
-                                        savage.natsfabric.event.NatsConnectionEvents.CONNECTED.invoker()
-                                                .onConnected(conn);
+                                        NatsConnectionEvents.CONNECTED.invoker().onConnected(conn);
                                     } else if (type == ConnectionListener.Events.RECONNECTED) {
-                                        savage.natsfabric.event.NatsConnectionEvents.RECONNECTED.invoker()
-                                                .onReconnected(conn);
+                                        NatsConnectionEvents.RECONNECTED.invoker().onReconnected(conn);
                                     } else if (type == ConnectionListener.Events.DISCONNECTED) {
-                                        savage.natsfabric.event.NatsConnectionEvents.DISCONNECTED.invoker()
-                                                .onDisconnected(conn);
+                                        NatsConnectionEvents.DISCONNECTED.invoker().onDisconnected(conn);
                                     }
                                 })
                                 .errorListener(new ErrorListener() {
@@ -160,6 +162,12 @@ public class NatsManager {
         NATSFabric.LOGGER.info("[NATS-Lib] Registered shutdown hook for mod: {}", modId);
     }
 
+    /** Removes a previously registered shutdown hook. */
+    public void unregisterShutdownHook(String modId) {
+        shutdownHooks.remove(modId);
+        NATSFabric.LOGGER.info("[NATS-Lib] Unregistered shutdown hook for mod: {}", modId);
+    }
+
     /**
      * Runs shutdown hooks and closes the NATS connection. Does not terminate the
      * executor.
@@ -168,7 +176,7 @@ public class NatsManager {
         if (!shutdownHooks.isEmpty()) {
             NATSFabric.LOGGER.info("[NATS-Lib] Executing {} registered shutdown hooks...", shutdownHooks.size());
 
-            java.util.List<CompletableFuture<Void>> futures = new java.util.ArrayList<>();
+            List<CompletableFuture<Void>> futures = new ArrayList<>();
             shutdownHooks.forEach((modId, hook) -> {
                 try {
                     futures.add(hook.onShutdown());
