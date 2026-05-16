@@ -60,7 +60,7 @@ public class NatsManager {
 
         natsExecutor.execute(() -> {
             try {
-                NATSFabric.LOGGER.info("[NATS-Lib] Starting persistent connection watchdog...");
+                NATSFabric.LOGGER.info("[NATS-Lib] Starting initial connection attempt...");
 
                 while (natsConnection == null || natsConnection.getStatus() == Connection.Status.CLOSED) {
                     try {
@@ -210,8 +210,11 @@ public class NatsManager {
 
     /** Removes a previously registered shutdown hook. */
     public void unregisterShutdownHook(String modId) {
-        shutdownHooks.remove(modId);
-        NATSFabric.LOGGER.info("[NATS-Lib] Unregistered shutdown hook for mod: {}", modId);
+        if (shutdownHooks.remove(modId) != null) {
+            NATSFabric.LOGGER.info("[NATS-Lib] Unregistered shutdown hook for mod: {}", modId);
+        } else {
+            NATSFabric.LOGGER.warn("[NATS-Lib] No shutdown hook registered for mod: {}", modId);
+        }
     }
 
     // --- Internals ---
