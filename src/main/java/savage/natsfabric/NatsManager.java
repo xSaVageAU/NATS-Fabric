@@ -49,14 +49,12 @@ public class NatsManager {
 
     /**
      * Attempts to connect to the NATS server.
-     * This will run in a background thread and retry indefinitely if the initial
-     * connection fails.
+     * Runs in a background thread and retries until the initial connection succeeds.
      */
     public void connect() {
-        if (natsConnection != null && natsConnection.getStatus() != Connection.Status.CLOSED)
-            return;
-        if (isConnecting.getAndSet(true))
-            return;
+        Connection conn = natsConnection;
+        if (conn != null && conn.getStatus() != Connection.Status.CLOSED) return;
+        if (isConnecting.getAndSet(true)) return;
 
         natsExecutor.execute(() -> {
             try {
@@ -64,40 +62,8 @@ public class NatsManager {
 
                 while (natsConnection == null || natsConnection.getStatus() == Connection.Status.CLOSED) {
                     try {
-                        NATSFabric.LOGGER.info("[NATS-Lib] Connecting to {} (ident: {})", config.natsUrl,
-                                config.serverName);
-
-                        Options.Builder builder = new Options.Builder()
-                                .server(config.natsUrl)
-                                .connectionName("FabricLibrary-" + config.serverName)
-                                .maxReconnects(-1) // Infinite reconnects once connected
-                                .reconnectWait(Duration.ofSeconds(2))
-                                .connectionListener((conn, type) -> {
-                                    NATSFabric.LOGGER.info("[NATS-Lib] Connection event: {}", type);
-                                    if (type == ConnectionListener.Events.CONNECTED) {
-                                        NatsConnectionEvents.CONNECTED.invoker().onConnected(conn);
-                                    } else if (type == ConnectionListener.Events.RECONNECTED) {
-                                        NatsConnectionEvents.RECONNECTED.invoker().onReconnected(conn);
-                                    } else if (type == ConnectionListener.Events.DISCONNECTED) {
-                                        NatsConnectionEvents.DISCONNECTED.invoker().onDisconnected(conn);
-                                    }
-                                })
-                                .errorListener(new ErrorListener() {
-                                    @Override
-                                    public void errorOccurred(Connection conn, String error) {
-                                        NATSFabric.LOGGER.error("[NATS-Lib] Error: {}", error);
-                                    }
-                                });
-
-                        if (config.natsAuthToken != null && !config.natsAuthToken.isEmpty()) {
-                            builder.token(config.natsAuthToken.toCharArray());
-                        } else if (config.natsUsername != null && !config.natsUsername.isEmpty()) {
-                            builder.userInfo(config.natsUsername.toCharArray(),
-                                    config.natsPassword != null ? config.natsPassword.toCharArray() : new char[0]);
-                        }
-
-                        // Synchronous connect call within our loop
-                        natsConnection = Nats.connect(builder.build());
+                        NATSFabric.LOGGER.info("[NATS-Lib] Connecting to {} (ident: {})", config.natsUrl, config.serverName);
+                        natsConnection = Nats.connect(buildOptions());
 
                         try {
                             jetStream = natsConnection.jetStream();
@@ -107,10 +73,9 @@ public class NatsManager {
                         }
 
                         NATSFabric.LOGGER.info("[NATS-Lib] Core connection established");
-                        break; // Exit loop on success
+                        break;
                     } catch (Exception e) {
-                        NATSFabric.LOGGER.error("[NATS-Lib] Initial connection failed: {}. Retrying in 5 seconds...",
-                                e.getMessage());
+                        NATSFabric.LOGGER.error("[NATS-Lib] Initial connection failed: {}. Retrying in 5 seconds...", e.getMessage());
                         try {
                             TimeUnit.SECONDS.sleep(5);
                         } catch (InterruptedException ie) {
@@ -123,6 +88,40 @@ public class NatsManager {
                 isConnecting.set(false);
             }
         });
+    }
+
+    /** Builds the NATS connection options from the current config. */
+    private Options buildOptions() {
+        Options.Builder builder = new Options.Builder()
+                .server(config.natsUrl)
+                .connectionName("FabricLibrary-" + config.serverName)
+                .maxReconnects(-1)
+                .reconnectWait(Duration.ofSeconds(2))
+                .connectionListener((conn, type) -> {
+                    NATSFabric.LOGGER.info("[NATS-Lib] Connection event: {}", type);
+                    if (type == ConnectionListener.Events.CONNECTED) {
+                        NatsConnectionEvents.CONNECTED.invoker().onConnected(conn);
+                    } else if (type == ConnectionListener.Events.RECONNECTED) {
+                        NatsConnectionEvents.RECONNECTED.invoker().onReconnected(conn);
+                    } else if (type == ConnectionListener.Events.DISCONNECTED) {
+                        NatsConnectionEvents.DISCONNECTED.invoker().onDisconnected(conn);
+                    }
+                })
+                .errorListener(new ErrorListener() {
+                    @Override
+                    public void errorOccurred(Connection conn, String error) {
+                        NATSFabric.LOGGER.error("[NATS-Lib] Error: {}", error);
+                    }
+                });
+
+        if (config.natsAuthToken != null && !config.natsAuthToken.isEmpty()) {
+            builder.token(config.natsAuthToken.toCharArray());
+        } else if (config.natsUsername != null && !config.natsUsername.isEmpty()) {
+            builder.userInfo(config.natsUsername.toCharArray(),
+                    config.natsPassword != null ? config.natsPassword.toCharArray() : new char[0]);
+        }
+
+        return builder.build();
     }
 
     /**

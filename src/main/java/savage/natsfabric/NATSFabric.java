@@ -14,17 +14,16 @@ public class NATSFabric implements ModInitializer {
 	public void onInitialize() {
 		LOGGER.info("[NATS-Lib] Initializing Core NATS Library");
 
-		// Initialize NatsManager singleton config
-		NatsManager.getInstance();
+		NatsManager nats = NatsManager.getInstance();
 
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
 			LOGGER.info("[NATS-Lib] Starting NATS connection...");
-			NatsManager.getInstance().connect();
+			nats.connect();
 		});
 
 		ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
 			LOGGER.info("[NATS-Lib] Server stopping. Initiating clean library shutdown...");
-			NatsManager.getInstance().shutdown();
+			nats.shutdown();
 		});
 
 		LOGGER.info("[NATS-Lib] Core Library Ready");
